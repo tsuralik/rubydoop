@@ -108,7 +108,7 @@ module Rubydoop
     # @option options [JavaClass] :format The output format to use, defaults to `TextOutputFormat`
     def output(dir, options={})
       format = options[:format] || Hadoop::Mapreduce::Lib::Output::TextOutputFormat
-      format.set_output_path(@job, Hadoop::Fs::Path.new(dir))
+      format.set_output_path(@job, Hadoop::Fs::Path.new(dir)) unless dir == nil
       @job.set_output_format_class(format)
     end
 
