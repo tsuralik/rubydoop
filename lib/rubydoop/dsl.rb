@@ -90,7 +90,9 @@ module Rubydoop
     def input(paths, options={})
       paths = paths.join(',') if paths.is_a?(Enumerable)
       format = options[:format] || Hadoop::Mapreduce::Lib::Input::TextInputFormat
-      format.set_input_paths(@job, paths)
+      if format.respond_to?('set_input_paths')
+        format.set_input_paths(@job, paths)
+      end
       @job.set_input_format_class(format)
     end
 
@@ -267,6 +269,26 @@ module Rubydoop
       @sort_comparator
     end
     alias_method :sort_comparator=, :sort_comparator
+
+    # @author tsuralik
+    # Sets a custom input filter.
+    #
+    # The equivalent of calling `setInputFilterClass` on a Hadoop job, 
+    # but instead of a Java class you pass a Ruby class and Rubydoop will wrap
+    # it in a way that works with Hadoop.
+    #
+    # @see http://hadoop.apache.org/docs/r1.0.3/api/org/apache/hadoop/mapreduce/Job.html#setInputFormatClass(java.lang.Class) Hadoop's Job#setInputFormatClass
+    #
+    # @param [Class] cls The (Ruby) input format class.
+    def input_format(cls=nil)
+      if cls
+        @job.configuration.set(INPUT_FORMAT_KEY, cls.name)
+        @job.set_input_format_class(@context.proxy_class(:input_format))
+        @input_format = cls
+      end
+      @input_format
+    end
+    alias_method :input_format=, :input_format
 
     # If you need to manipulate the Hadoop job in some that isn't covered by
     # this DSL, this is the method for you. It yields the `Job`, letting you

@@ -40,6 +40,11 @@ module Rubydoop
     create_instance(conf.get(SORT_COMPARATOR_KEY))
   end
 
+  # @private
+  def self.create_input_format(conf)
+    create_instance(conf.get(INPUT_FORMAT_KEY))
+  end
+  
   private
 
   MAPPER_KEY = 'rubydoop.mapper'.freeze
@@ -48,6 +53,7 @@ module Rubydoop
   PARTITIONER_KEY = 'rubydoop.partitioner'.freeze
   GROUPING_COMPARATOR_KEY = 'rubydoop.grouping_comparator'.freeze
   SORT_COMPARATOR_KEY = 'rubydoop.sort_comparator'.freeze
+  INPUT_FORMAT_KEY = 'rubydoop.input_format'.freeze
 
   def self.create_instance(const_path)
     cls = const_path.split('::').reduce(Object) { |host, name| host.const_get(name) }

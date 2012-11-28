@@ -44,6 +44,7 @@ public class RubydoopJobRunner extends Configured implements Tool {
             put(symbols.getSymbol("partitioner"), PartitionerProxy.class);
             put(symbols.getSymbol("grouping_comparator"), GroupingComparatorProxy.class);
             put(symbols.getSymbol("sort_comparator"), SortComparatorProxy.class);
+            put(symbols.getSymbol("input_format"), InputFormatProxy.class);
         }};
     }
 

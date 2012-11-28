@@ -118,7 +118,8 @@ module Rubydoop
       Bundler.definition.specs_for(@options[:gem_groups]).flat_map do |spec|
         if spec.full_name !~ /^(?:bundler|rubydoop)-\d+/
           spec.require_paths.map do |rp| 
-            "#{spec.full_gem_path}/#{rp}"
+            file = "#{spec.full_gem_path}/#{rp}"
+            "#{spec.full_gem_path}/#{rp}" if File.exists?(file)
           end
         else
           []
