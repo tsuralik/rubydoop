@@ -9,19 +9,23 @@ module JavaJar
   include_package 'java.util.jar'
 end
 
+module JavaLang
+  include_package 'java.lang'
+end
+
 describe 'Packaging and running a project' do
+  def isolated_run(dir, cmd)
+    Dir.chdir(dir) do
+      Bundler.clean_system("rvm $RUBY_VERSION@rubydoop-test_project do #{cmd}")
+    end
+  end
+
   let :test_project_dir do
     File.expand_path('../test_project', __FILE__)
   end
 
   before :all do
-    log_redirection = "2>&1 | tee #{test_project_dir}/data/log"
-    commands = [
-      "cd #{test_project_dir}",
-      "rake clean package",
-      "hadoop jar build/test_project.jar -conf conf/hadoop-local.xml test_project data/input data/output #{log_redirection}"
-    ]
-    system 'bash', '-cl', commands.join(' && ')
+    isolated_run(test_project_dir, 'rake clean package')
   end
 
   around do |example|
@@ -46,12 +50,26 @@ describe 'Packaging and running a project' do
     end
 
     it 'includes gem dependencies' do
-      jar_entries.should include('json.rb')
-      jar_entries.should include('json/')
+      jar_entries.should include('gems/json-1.7.5-java/lib/json.rb')
+      jar_entries.should include('gems/json-1.7.5-java/')
+    end
+
+    it 'includes the Rubydoop gem' do
+      jar_entries.should include("gems/rubydoop-#{Rubydoop::VERSION}/lib/rubydoop.rb")
+      jar_entries.should include("gems/rubydoop-#{Rubydoop::VERSION}/lib/rubydoop/dsl.rb")
+    end
+
+    it 'includes a script that sets up a load path that includes all bundled gems' do
+      file_io = jar.get_input_stream(jar.get_jar_entry('setup_load_path.rb')).to_io
+      script_contents = file_io.read
+      script_contents.should include(%($LOAD_PATH << 'gems/rubydoop-#{Rubydoop::VERSION}/lib'))
+      script_contents.should include(%($LOAD_PATH << 'gems/json-1.7.5-java/lib'))
+      script_contents.should include(%($LOAD_PATH << 'gems/jruby-openssl-0.7.6.1/lib/shared'))
     end
 
     it 'includes jruby-complete.jar' do
-      jar_entries.should include('lib/jruby-complete-1.6.7.jar')
+      jruby_version = ENV['RUBY_VERSION'].scan(/^jruby-(.+)$/).flatten.first
+      jar_entries.should include("lib/jruby-complete-#{jruby_version}.jar")
     end
 
     it 'includes extra JAR dependencies' do
@@ -66,17 +84,16 @@ describe 'Packaging and running a project' do
       jar_entries.should include('rubydoop/InstanceContainer.class')
     end
 
-    it 'includes the Rubydoop configuration scripts' do
-      jar_entries.should include('rubydoop.rb')
-      jar_entries.should include('rubydoop/dsl.rb')
-    end
-
     it 'has the RubydoopJobRunner as its main class' do
       jar.manifest.main_attributes.get(Java::JavaUtilJar::Attributes::Name::MAIN_CLASS).should == 'rubydoop.RubydoopJobRunner'
     end
   end
 
   context 'Running the project' do
+    before :all do
+      isolated_run(test_project_dir, "#{HADOOP_HOME}/bin/hadoop jar build/test_project.jar -conf conf/hadoop-local.xml test_project data/input data/output 2>&1 | tee data/log")
+    end
+
     let :log do
       File.read('data/log')
     end
@@ -92,10 +109,7 @@ describe 'Packaging and running a project' do
 
       it 'runs the combiner' do
         log.should match(/Combine input records=[^0]/)
-      end
-
-      it 'counts the number of JRuby runtimes created' do
-        log.should match(/JRuby runtimes created=2/)
+        words['alice'].should == 385 * 2
       end
     end
 

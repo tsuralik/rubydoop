@@ -5,6 +5,8 @@ require 'open-uri'
 require 'ant'
 require 'fileutils'
 require 'set'
+require 'tmpdir'
+require 'rubydoop/version'
 
 
 module Rubydoop
@@ -45,6 +47,7 @@ module Rubydoop
     def create!
       create_directories!
       fetch_jruby!
+      find_gems!
       build_jar!
     end
 
@@ -97,32 +100,56 @@ module Rubydoop
       end
     end
 
+    def find_gems!
+      gem_specs = Bundler.definition.specs_for(@options[:gem_groups])
+      @options[:gem_specs] = gem_specs.select { |spec| spec.full_name !~ /^(?:bundler|rubydoop)/ }
+    end
+
     def build_jar!
-      # the ant block is instance_exec'ed so instance variables and methods are not in scope
-      options = @options
-      bundled_gems = load_path
-      lib_jars = [options[:jruby_jar_path], *options[:lib_jars]]
-      ant :output_level => 1 do
-        jar :destfile => options[:jar_path] do
-          manifest { attribute :name => 'Main-Class', :value => options[:main_class] }
-          zipfileset :src => "#{options[:rubydoop_base_dir]}/lib/rubydoop.jar"
-          fileset :dir => "#{options[:rubydoop_base_dir]}/lib", :includes => '**/*.rb', :excludes => '*.jar'
-          fileset :dir => "#{options[:project_base_dir]}/lib"
-          bundled_gems.each { |path| fileset :dir => path }
-          lib_jars.each { |extra_jar| zipfileset :dir => File.dirname(extra_jar), :includes => File.basename(extra_jar), :prefix => 'lib' }
+      Dir.mktmpdir('rubydoop') do |generated_files_path|
+        create_load_path_setup_script(generated_files_path)
+
+        # NOTE: the ant block is instance_exec'ed so instance variables and methods will not be scope
+
+        output_path = @options[:jar_path]
+        main_class = @options[:main_class]
+        project_lib = File.join(@options[:project_base_dir], 'lib')
+        rubydoop_jar = File.join(@options[:rubydoop_base_dir], 'lib', 'rubydoop.jar')
+        rubydoop_lib = File.join(@options[:rubydoop_base_dir], 'lib')
+        gem_specs = @options[:gem_specs]
+        extra_jars = [@options[:jruby_jar_path], *@options[:lib_jars]]
+
+        ant output_level: 1 do
+          jar destfile: output_path do
+            manifest { attribute name: 'Main-Class', value: main_class }
+
+            zipfileset dir: project_lib
+            zipfileset src: rubydoop_jar
+            zipfileset dir: generated_files_path
+            zipfileset dir: rubydoop_lib, excludes: '*.jar', prefix: "gems/rubydoop-#{Rubydoop::VERSION}/lib"
+
+            gem_specs.each do |gem_spec|
+              zipfileset dir: gem_spec.full_gem_path, prefix: "gems/#{File.basename(gem_spec.full_gem_path)}"
+            end
+
+            extra_jars.each do |extra_jar|
+              zipfileset dir: File.dirname(extra_jar), includes: File.basename(extra_jar), prefix: 'lib'
+            end
+          end
         end
       end
     end
 
-    def load_path
-      Bundler.definition.specs_for(@options[:gem_groups]).flat_map do |spec|
-        if spec.full_name !~ /^(?:bundler|rubydoop)-\d+/
-          spec.require_paths.map do |rp| 
-            file = "#{spec.full_gem_path}/#{rp}"
-            "#{spec.full_gem_path}/#{rp}" if File.exists?(file)
+    def create_load_path_setup_script(base_path)
+      path = File.join(base_path, 'setup_load_path.rb')
+      FileUtils.mkdir_p(File.dirname(path))
+      File.open(path, 'w') do |io|
+        io.puts("$LOAD_PATH << 'gems/rubydoop-#{Rubydoop::VERSION}/lib'")
+        @options[:gem_specs].each do |gem_spec|
+          gem_spec.require_paths.each do |path|
+            relative_path = File.join(File.basename(gem_spec.full_gem_path), path)
+            io.puts("$LOAD_PATH << 'gems/#{relative_path}'")
           end
-        else
-          []
         end
       end
     end

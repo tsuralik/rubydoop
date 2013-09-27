@@ -89,7 +89,11 @@ module Rubydoop
     # @option options [JavaClass] :format The input format to use, defaults to `TextInputFormat`
     def input(paths, options={})
       paths = paths.join(',') if paths.is_a?(Enumerable)
-      format = options[:format] || Hadoop::Mapreduce::Lib::Input::TextInputFormat
+      format = options.fetch(:format, :text)
+      unless format.is_a?(Class)
+        class_name = format.to_s.gsub(/^.|_./) {|x| x[-1,1].upcase } + "InputFormat"
+        format = Hadoop::Mapreduce::Lib::Input.const_get(class_name)
+      end
       if format.respond_to?('set_input_paths')
         format.set_input_paths(@job, paths)
       end
@@ -107,7 +111,11 @@ module Rubydoop
     # @param [Hash] options
     # @option options [JavaClass] :format The output format to use, defaults to `TextOutputFormat`
     def output(dir, options={})
-      format = options[:format] || Hadoop::Mapreduce::Lib::Output::TextOutputFormat
+      format = options.fetch(:format, :text)
+      unless format.is_a?(Class)
+        class_name = format.to_s.gsub(/^.|_./) {|x| x[-1,1].upcase } + "OutputFormat"
+        format = Hadoop::Mapreduce::Lib::Output.const_get(class_name)
+      end
       format.set_output_path(@job, Hadoop::Fs::Path.new(dir)) unless dir == nil
       @job.set_output_format_class(format)
     end
@@ -362,7 +370,7 @@ module Rubydoop
     def initialize(conf, proxy_classes, arguments)
       @conf = conf
       @proxy_classes = proxy_classes
-      @arguments = arguments
+      @arguments = arguments.to_a
       @jobs = []
     end
 
@@ -373,7 +381,7 @@ module Rubydoop
     end
 
     def proxy_class(type)
-      @proxy_classes[type]
+      @proxy_classes[type.to_s]
     end
   end
 end
