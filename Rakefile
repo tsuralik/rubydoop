@@ -1,8 +1,6 @@
 # encoding: utf-8
 
 require 'ant'
-require 'rspec/core/rake_task'
-
 
 namespace :build do
   source_dir = 'ext/src'
@@ -13,7 +11,9 @@ namespace :build do
     mkdir_p build_dir
     ant.path :id => 'compile.class.path' do
       pathelement :location => File.join(ENV['MY_RUBY_HOME'], 'lib', 'jruby.jar')
-      fileset :dir => ENV['HADOOP_HOME'], :includes => '*.jar'
+      File.foreach(File.expand_path('../.classpath', __FILE__)) do |path|
+        pathelement :location => path.chop!
+      end
     end
   end
 
@@ -37,18 +37,60 @@ end
 desc 'Build the lib/rubydoop.jar'
 task :build => 'build:jars'
 
-RSpec::Core::RakeTask.new(:spec)
-
-desc 'Tag & release the gem'
-task :release => %w[build:clean build spec] do
-  $: << 'lib'
-  require 'rubydoop/version'
-
-  version_string = "v#{Rubydoop::VERSION}"
-  
-  unless %x(git tag -l).include?(version_string)
-    system %(git tag -a #{version_string} -m #{version_string})
+namespace :setup do
+  task :hadoop do
+    hadoop_release = ENV['HADOOP_RELEASE'] || 'hadoop-1.0.3/hadoop-1.0.3-bin'
+    hadoop_url = "http://archive.apache.org/dist/hadoop/common/#{hadoop_release}.tar.gz"
+    FileUtils.mkdir_p('tmp')
+    Dir.chdir('tmp') do
+      command = (<<-END).lines.map(&:strip).join(' && ')
+      rm -fr hadoop*
+      curl --progress-bar -O '#{hadoop_url}'
+      tar xf hadoop*.tar.gz
+      END
+      system(command)
+    end
   end
 
-  system %(git push && git push --tags; gem build rubydoop.gemspec && gem push rubydoop-*.gem && mv rubydoop-*.gem pkg)
+  task :test_project do
+    Dir.chdir('spec/integration/test_project') do
+      command = (<<-END).lines.map(&:strip).join(' && ') 
+      rvm gemset create rubydoop-test_project
+      rvm $RUBY_VERSION@rubydoop-test_project do bundle install
+      END
+      puts command
+      Bundler.clean_system(command)
+    end
+  end
+
+  task :classpath do
+    File.open('.classpath', 'w') do |io|
+      hadoop_home = File.expand_path(Dir["tmp/hadoop*"].first)
+      %x(#{hadoop_home}/bin/hadoop classpath).chomp.split(':').each do |pattern|
+        Dir[pattern].each do |path|
+          io.puts(path)
+        end
+      end
+    end
+  end
 end
+
+desc 'Download Hadoop and set up classpath'
+task :setup => ['setup:hadoop', 'setup:test_project', 'setup:classpath']
+
+require 'rspec/core/rake_task'
+
+RSpec::Core::RakeTask.new(:spec) do |r|
+  r.rspec_opts = '--tty'
+end
+
+task :spec => :build
+
+require 'bundler'
+
+namespace :gem do
+  Bundler::GemHelper.install_tasks
+end
+
+desc 'Release a new gem version'
+task :release => [:spec, 'gem:release']
