@@ -11,9 +11,10 @@ namespace :build do
     mkdir_p build_dir
     ant.path :id => 'compile.class.path' do
       pathelement :location => File.join(ENV['MY_RUBY_HOME'], 'lib', 'jruby.jar')
-      File.foreach(File.expand_path('../.classpath', __FILE__)) do |path|
-        pathelement :location => path.chop!
-      end
+      pathelement :location => File.join(ENV['HADOOP_RELEASE'], 'hadoop-core-0.20.203.0.jar')
+#      File.foreach(File.expand_path('../.classpath', __FILE__)) do |path|
+#        pathelement :location => path.chop!
+#      end
     end
   end
 

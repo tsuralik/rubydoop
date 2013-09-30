@@ -13,8 +13,6 @@ import org.apache.hadoop.mapreduce.JobContext;
 
 import org.jruby.runtime.builtin.IRubyObject;
 
-import static rubydoop.RubydoopCounters.*;
-
 
 public class InputFormatProxy extends InputFormat<Object, Object> {
 
