@@ -43,7 +43,7 @@ public class InputFormatProxy extends InputFormat<Object, Object> {
   public List getSplits(JobContext context) throws IOException, InterruptedException {
     instance.setup(context);
 
-	IRubyObject iro = instance.callMethod("get_splits", context);
+	IRubyObject iro = (IRubyObject) instance.callMethod("get_splits", context);
 	List rubySplits = (List) iro.toJava(List.class);
     return rubySplits;
   }
